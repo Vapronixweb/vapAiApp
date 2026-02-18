@@ -1,8 +1,20 @@
+import 'dart:convert';
+
 import 'package:ai_app/pro_screen.dart';
+import 'package:ai_app/routes/app_routes.dart';
 import 'package:flutter/material.dart';
+import 'package:gallery_saver_plus/gallery_saver.dart';
+import 'package:get/get_core/src/get_main.dart';
+import 'package:get/get_navigation/src/extension_navigation.dart';
+import 'package:get/get_navigation/src/snackbar/snackbar.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
-// import 'image_api.dart'; // Uncomment if you have your API file ready
+import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:share_plus/share_plus.dart';
+import 'controllers/auth_controller.dart';
 
 class TextToImageScreen extends StatefulWidget {
   final String? initialPrompt; // 1. Accepts text passed from Home Screen
@@ -18,12 +30,13 @@ class TextToImageScreen extends StatefulWidget {
 
 class _TextToImageScreenState extends State<TextToImageScreen> {
   final TextEditingController promptController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
   // State Variables
   bool isLoading = false;
   String? resultUrl;
   File? selectedImage;
-  GenerationMode generationMode = GenerationMode.textToImage;
+  GenerationMode generationMode = GenerationMode.imageToImage;
   String? selectedStyle;
 
   final ImagePicker _imagePicker = ImagePicker();
@@ -58,8 +71,76 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
     super.dispose();
   }
 
+
+  void _scrollToResult() {
+    Future.delayed(const Duration(milliseconds: 300), () {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+
+  Future<File?> _downloadImageFile() async {
+    if (resultUrl == null) return null;
+
+    try {
+      // Request permission
+      final status = await Permission.photos.request();
+      if (!status.isGranted) {
+        Get.snackbar("Permission", "Storage permission denied");
+        return null;
+      }
+
+      // Download to temporary directory
+      final tempDir = await getTemporaryDirectory();
+      final filePath =
+          "${tempDir.path}/ai_${DateTime.now().millisecondsSinceEpoch}.png";
+
+      await Dio().download("$baseUrl/$resultUrl", filePath);
+
+      // Save to gallery using gallery_saver_plus
+      final bool? isSaved =
+      await GallerySaver.saveImage(filePath, albumName: "AI App");
+
+      if (isSaved != true) {
+        Get.snackbar("Error", "Failed to save image");
+        return null;
+      }
+
+      return File(filePath);
+    } catch (e) {
+      Get.snackbar("Error", "Download failed");
+      return null;
+    }
+  }
+
+
+  Future<void> _handleDownload() async {
+    final file = await _downloadImageFile();
+    if (file != null) {
+      Get.snackbar(
+        "Saved 🎉",
+        "Image saved to gallery",
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  Future<void> _handleShare() async {
+    final file = await _downloadImageFile();
+    if (file != null) {
+      await Share.shareXFiles([XFile(file.path)]);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
@@ -73,6 +154,7 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
             // --- Scrollable Content ---
             Expanded(
               child: SingleChildScrollView(
+                controller: _scrollController,
                 physics: const BouncingScrollPhysics(),
                 child: Column(
                   children: [
@@ -83,17 +165,18 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
                     _buildPromptSection(size),
 
                     // 5. Image Upload (Conditional)
-                    if (generationMode != GenerationMode.textToImage)
+                    if (generationMode == GenerationMode.imageToImage)
                       _buildImageUploadSection(),
 
                     // 6. Style Selection
-                    _buildStyleSelection(),
+                    // _buildStyleSelection(),
 
                     const SizedBox(height: 20),
 
                     // 7. Result Section (If generated)
                     if (resultUrl != null)
                       _buildResultSection(),
+
 
                     // Bottom padding for scrolling
                     const SizedBox(height: 100),
@@ -187,17 +270,19 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    generationMode == GenerationMode.imageToImage
-                        ? "Enhancement Prompt"
-                        : "Describe your image",
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
+                  Flexible(
+                    child: Text(
+                      generationMode == GenerationMode.imageToImage
+                          ? "What do you want to do with your image?"
+                          : "Please write what do you want",
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                      ),
                     ),
                   ),
-                  if (generationMode == GenerationMode.textToImage)
+                  if (generationMode == GenerationMode.textToImage || generationMode == GenerationMode.textToVideo)
                     GestureDetector(
                       onTap: _randomizePrompt,
                       child: const Row(
@@ -250,11 +335,13 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
-          _modeChip("Text to Image", GenerationMode.textToImage, Icons.text_fields),
+
+          _modeChip("Style your image", GenerationMode.imageToImage, Icons.image),
           const SizedBox(width: 10),
-          _modeChip("Image to Image", GenerationMode.imageToImage, Icons.image),
-          const SizedBox(width: 10),
-          _modeChip("Inpainting", GenerationMode.textAndImage, Icons.brush),
+          _modeChip("Generate an Image", GenerationMode.textToImage, Icons.text_fields),
+
+          // const SizedBox(width: 10),
+          // _modeChip("Text to video", GenerationMode.textToVideo, Icons.video_camera_back),
         ],
       ),
     );
@@ -322,13 +409,13 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       )
           : Stack(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: Image.file(
-              selectedImage!,
-              width: double.infinity,
-              height: double.infinity,
-              fit: BoxFit.cover,
+          Center(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Image.file(
+                selectedImage!,
+                fit: BoxFit.fill,
+              ),
             ),
           ),
           Positioned(
@@ -350,6 +437,8 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       ),
     );
   }
+
+
 
   Widget _buildStyleSelection() {
     return Column(
@@ -437,46 +526,134 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
             child: Image.network(
-              resultUrl!,
+              "$baseUrl/$resultUrl",
               fit: BoxFit.cover,
               width: double.infinity,
-              height: 300,
             ),
           ),
-          const SizedBox(height: 10),
+
+          const SizedBox(height: 24),
+
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _iconBtn(Icons.file_download_outlined, "Save"),
-              _iconBtn(Icons.share_outlined, "Share"),
-              _iconBtn(Icons.info_outline, "Info"),
+              Expanded(
+                child: _premiumActionButton(
+                  label: "Save to Gallery",
+                  icon: Icons.download_rounded,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF11998e), Color(0xFF38ef7d)],
+                  ),
+                  onTap: _handleDownload,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _premiumActionButton(
+                  label: "Share",
+                  icon: Icons.share_rounded,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF4facfe), Color(0xFF00f2fe)],
+                  ),
+                  onTap: _handleShare,
+                ),
+              ),
             ],
-          )
+          ),
+
+          const SizedBox(height: 12),
+
+          _glassSecondaryButton(
+            label: "Generate Again",
+            icon: Icons.refresh_rounded,
+            onTap: () {
+              setState(() {
+                resultUrl = null;
+              });
+            },
+          ),
         ],
       ),
     );
   }
 
-  Widget _iconBtn(IconData icon, String label) {
-    return Column(
-      children: [
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E24),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white10),
-          ),
-          child: Icon(icon, color: Colors.white70, size: 20),
+
+
+  Widget _premiumActionButton({
+    required String label,
+    required IconData icon,
+    required Gradient gradient,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Ink(
+        height: 56,
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 10,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
-        const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-      ],
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.white),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+  Widget _glassSecondaryButton({
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        height: 50,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E24),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.white70),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -548,27 +725,74 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
     });
   }
 
+
   Future<void> _handleGenerate() async {
     setState(() => isLoading = true);
-    FocusScope.of(context).unfocus(); // Hide keyboard
+    FocusScope.of(context).unfocus(); // hide keyboard
 
     try {
-      // Simulate API Network Delay
-      await Future.delayed(const Duration(seconds: 3));
+      final auth = AuthController.to;
+      final token = auth.accessToken.value;
 
-      // MOCK RESULT: In a real app, call your ImageApi.generateImage here
-      setState(() {
-        resultUrl = "https://picsum.photos/500/500?random=${DateTime.now().millisecondsSinceEpoch}";
-        isLoading = false;
-      });
+      final uri = Uri.parse(
+        generationMode == GenerationMode.textToImage
+            ? "$apiUrl/generate/text-to-image"
+            : "$apiUrl/generate/image-to-image",
+      );
 
+      final request = http.MultipartRequest('POST', uri);
+
+      // Attach Authorization header
+      request.headers['Authorization'] = 'Bearer $token';
+
+      // Attach prompt
+      request.fields['prompt'] = promptController.text;
+
+      // Attach image if in Image→Image mode
+      if (generationMode == GenerationMode.imageToImage && selectedImage != null) {
+        request.files.add(
+          await http.MultipartFile.fromPath('image', selectedImage!.path),
+        );
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+
+        setState(() {
+          resultUrl = data['output']['url'];
+          isLoading = false;
+        });
+
+        Get.snackbar(
+          "Success ✨",
+          "Your artwork is ready!",
+          backgroundColor: Colors.green,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.BOTTOM,
+        );
+
+        _scrollToResult();
+
+      } else {
+        setState(() => isLoading = false);
+        final responseData = jsonDecode(response.body);
+
+        Get.snackbar(
+          "Error",
+          responseData['message'] ?? "Something went wrong",
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      }
     } catch (e) {
       setState(() => isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
-      );
+      Get.snackbar("Error", "$e", backgroundColor: Colors.red, colorText: Colors.white);
     }
   }
+
 }
 
 // Style Option Model
@@ -583,5 +807,5 @@ class StyleOption {
 enum GenerationMode {
   textToImage,
   imageToImage,
-  textAndImage,
+  textToVideo,
 }

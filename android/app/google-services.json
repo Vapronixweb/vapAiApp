@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "557629621440",
+    "project_id": "imagine-ai-1232a",
+    "storage_bucket": "imagine-ai-1232a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:557629621440:android:e54fa9a0fbbc7fb8815925",
+        "android_client_info": {
+          "package_name": "com.vapronix.imagine.image.video.ai.generator"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBxU5wwX_IL5uWxw2OGv6Drp67U-ANRLZE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

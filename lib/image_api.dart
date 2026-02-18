@@ -54,8 +54,8 @@ class ImageApi {
         return 'text_to_image';
       case GenerationMode.imageToImage:
         return 'image_to_image';
-      case GenerationMode.textAndImage:
-        return 'text_and_image';
+      case GenerationMode.textToVideo:
+        return 'text_to_video';
     }
   }
 }

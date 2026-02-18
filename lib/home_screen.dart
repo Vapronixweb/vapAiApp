@@ -1,7 +1,14 @@
 import 'package:ai_app/pro_screen.dart';
+import 'package:ai_app/prompt_screen.dart';
+import 'package:ai_app/routes/app_routes.dart';
+import 'package:ai_app/services/category_service.dart';
 import 'package:flutter/material.dart';
-import 'package:carousel_slider/carousel_slider.dart';
-import 'add_screen.dart'; // Import your updated add_screen
+import 'package:get/get_state_manager/src/rx_flutter/rx_obx_widget.dart';
+import 'add_screen.dart';
+import 'controllers/auth_controller.dart';
+import 'generation_history.dart';
+import 'models/category_model.dart';
+import 'models/prompt_template_model.dart';
 
 class AiVideoHome extends StatefulWidget {
   const AiVideoHome({super.key});
@@ -13,18 +20,46 @@ class AiVideoHome extends StatefulWidget {
 class _AiVideoHomeState extends State<AiVideoHome> {
   final TextEditingController _homePromptController = TextEditingController();
 
+  List<Category> categories = [];
+  bool isLoading = true;
+
   // Navigate to generation screen
   void _navigateToGenerate([String? prefilledText]) {
     Navigator.push(
       context,
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 600),
-        pageBuilder: (_, __, ___) => TextToImageScreen(
+        pageBuilder: (_, _, _) => TextToImageScreen(
           initialPrompt: prefilledText ?? _homePromptController.text,
         ),
       ),
     );
   }
+
+  @override
+  void initState() {
+    super.initState();
+
+    final token = AuthController.to.accessToken.value;
+
+    // print("User Token: $token");
+
+    _loadCategories();
+  }
+
+
+  Future<void> _loadCategories() async {
+    try {
+      final result = await CategoryService.fetchCategories();
+      setState(() {
+        categories = result;
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() => isLoading = false);
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -40,10 +75,8 @@ class _AiVideoHomeState extends State<AiVideoHome> {
             CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
-                // 1. Custom Header with Gradient Text
-                SliverToBoxAdapter(child: _buildHeader()),
+                SliverToBoxAdapter(child: _buildHeader(context)),
 
-                // 2. THE MAGIC INPUT FIELD (Hero)
                 SliverAppBar(
                   backgroundColor: const Color(0xFF0F0F13),
                   pinned: true, // Keeps input visible at top when scrolling
@@ -51,33 +84,27 @@ class _AiVideoHomeState extends State<AiVideoHome> {
                   flexibleSpace: _buildQuickInputSection(),
                 ),
 
-                // 3. Trending Tags (Unique Addon)
-                SliverToBoxAdapter(child: _buildTrendingTags()),
+                // SliverToBoxAdapter(child: _buildTrendingTags()),
 
                 // 4. Carousel
-                SliverToBoxAdapter(child: _buildHeroCarousel(context, isTablet)),
+                // SliverToBoxAdapter(child: _buildHeroCarousel(context, isTablet)),
 
-                // 5. Sections
-                _buildResponsiveCarouselSection(
-                  context,
-                  title: 'Trending Now',
-                  isTablet: isTablet,
-                  items: const [
-                    _CardItem('CYBERPUNK CITY', 'assets/hero.jpg'),
-                    _CardItem('ANIME FIGHT', 'assets/news.jpeg'),
-                  ],
-                ),
+                if (isLoading)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(40),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  )
+                else
+                  ...categories.map((category) {
+                    if (category.prompts.isEmpty) {
+                      return const SliverToBoxAdapter();
+                    }
+                    return _buildCategorySection(category, isTablet);
+                  }),
 
-                _buildResponsiveCarouselSection(
-                  context,
-                  title: 'Community Best',
-                  isTablet: isTablet,
-                  items: const [
-                    _CardItem('OIL PAINTING', 'assets/baby.jpeg'),
-                    _CardItem('REALISTIC', 'assets/news2.webp'),
-                    _CardItem('REALISTIC', 'assets/news2.webp'),
-                  ],
-                ),
+
 
                 const SliverToBoxAdapter(child: SizedBox(height: 100)),
               ],
@@ -91,57 +118,250 @@ class _AiVideoHomeState extends State<AiVideoHome> {
     );
   }
 
-  // --- NEW WIDGETS ---
 
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildCategorySection(Category category, bool isTablet) {
+    double cardWidth = isTablet ? 240 : 160;
+    double cardHeight = isTablet ? 320 : 220;
+
+    return SliverToBoxAdapter(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // CATEGORY TITLE
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 30, 20, 15),
+            child: Text(
+              category.name.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+
+          // PROMPT TEMPLATES
+          SizedBox(
+            height: cardHeight,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              itemCount: category.prompts.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 16),
+              itemBuilder: (context, index) {
+                final prompt = category.prompts[index];
+                return _buildPromptCard(category, prompt, cardWidth);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPromptCard(
+      Category category,
+      PromptTemplate prompt,
+      double width,
+      ) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PromptScreen(
+              category: category,
+              promptTemplate: prompt,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        width: width,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          image: DecorationImage(
+            image: NetworkImage(
+              prompt.sampleImage ??
+                  '$baseUrl/prompts/placeholder.png',
+            ),
+            fit: BoxFit.fill,
+          ),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Colors.transparent,
+                Colors.black.withOpacity(0.65),
+              ],
+            ),
+          ),
+          alignment: Alignment.bottomLeft,
+          child: Text(
+            prompt.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+
+  Widget _buildHeader(BuildContext context) {
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // 👤 Greeting
           Column(
+
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                "Welcome,",
-                style: TextStyle(color: Colors.white54, fontSize: 14),
+              const Text(
+                "Welcome to,",
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11,
+                ),
               ),
+              const SizedBox(height: 4),
               ShaderMask(
                 shaderCallback: (bounds) => const LinearGradient(
                   colors: [Color(0xFF4facfe), Color(0xFF00f2fe)],
                 ).createShader(bounds),
                 child: const Text(
-                  'Hrithik Dwivedi',
+                  'Imagine AI',
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
-                    fontSize: 24,
+                    fontSize: 15,
                     color: Colors.white,
                   ),
                 ),
               ),
             ],
           ),
-          GestureDetector(
-            onTap: (){
-              Navigator.push(context, MaterialPageRoute(builder: (context)=>ProAccessScreen()));
-            },
-            child: Center(
-              child: Container(
-                margin: const EdgeInsets.only(right: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF4facfe), Color(0xFF00f2fe)],
+
+          const Spacer(),
+
+          // 🪙 Tokens Badge
+          Obx(() {
+            final tokens = AuthController.to.user.value?.tokens ?? 0;
+
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E24),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.monetization_on_rounded,
+                    size: 16,
+                    color: Color(0xFFFFD54F),
                   ),
-                  borderRadius: BorderRadius.circular(20),
+                  const SizedBox(width: 6),
+                  Text(
+                    '$tokens',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+
+          const SizedBox(width: 10),
+
+          // ⭐ PRO Button
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => ProAccessScreen()),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF4facfe), Color(0xFF00f2fe)],
                 ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.auto_awesome, size: 14, color: Colors.white),
-                    SizedBox(width: 4),
-                    Text('PRO', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                  ],
+                borderRadius: BorderRadius.circular(22),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF4facfe).withOpacity(0.4),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.auto_awesome, size: 14, color: Colors.white),
+                  SizedBox(width: 6),
+                  Text(
+                    'PRO',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          // 📁 History Button
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const GenerationHistoryScreen(),
                 ),
+              );
+            },
+            child: Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E24),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.4),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+              ),
+              child: const Icon(
+                Icons.folder_open_rounded,
+                color: Colors.white70,
+                size: 20,
               ),
             ),
           ),
@@ -212,162 +432,6 @@ class _AiVideoHomeState extends State<AiVideoHome> {
     );
   }
 
-  Widget _buildTrendingTags() {
-    final tags = ["Astronaut in jungle", "Cyberpunk cat", "Underwater city", "Neon Portrait"];
-
-    return SizedBox(
-      height: 40,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        scrollDirection: Axis.horizontal,
-        itemCount: tags.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemBuilder: (context, index) {
-          return GestureDetector(
-            onTap: () => _navigateToGenerate(tags[index]),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white12),
-              ),
-              child: Text(
-                tags[index],
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // --- EXISTING COMPONENTS (Simplified for brevity) ---
-
-  Widget _buildHeroCarousel(BuildContext context, bool isTablet) {
-    // Reduced top padding since we have the input field now
-    return Padding(
-      padding: const EdgeInsets.only(top: 20, bottom: 20),
-      child: CarouselSlider(
-        options: CarouselOptions(
-          height: isTablet ? 350 : 200,
-          viewportFraction: 0.85,
-          enlargeCenterPage: true,
-          autoPlay: true,
-        ),
-        items: [1, 2, 3].map((i) => _buildHeroItem()).toList(),
-      ),
-    );
-  }
-
-  Widget _buildHeroItem() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.grey[900], // Fallback color
-        borderRadius: BorderRadius.circular(20),
-        image: DecorationImage(image: AssetImage('assets/hero.jpg'), fit: BoxFit.cover),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            bottom: 0, left: 0, right: 0,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  gradient: LinearGradient(colors: [Colors.black, Colors.transparent], begin: Alignment.bottomCenter, end: Alignment.topCenter)
-              ),
-              child: const Text("Featured Creation", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildResponsiveCarouselSection(
-      BuildContext context, {
-        required String title,
-        required List<_CardItem> items,
-        required bool isTablet,
-      }) {
-    // Dynamic sizes based on screen
-    double cardWidth = isTablet ? 240 : 160;
-    double cardHeight = isTablet ? 320 : 220;
-
-    return SliverToBoxAdapter(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 30, 20, 15),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const Text('See All', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.w600)),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: cardHeight,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              itemCount: items.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 16),
-              itemBuilder: (context, index) {
-                return _buildSectionCard(items[index], cardWidth);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSectionCard(_CardItem item, double width) {
-    return Container(
-      width: width,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        image: DecorationImage(image: AssetImage(item.image), fit: BoxFit.cover),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
-          ),
-        ),
-        padding: const EdgeInsets.all(16),
-        alignment: Alignment.bottomLeft,
-        child: Text(
-          item.title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-          ),
-        ),
-      ),
-    );
-  }
-
-
   Widget _buildCreateButton(BuildContext context, bool isTablet) {
     final double screenWidth = MediaQuery.of(context).size.width;
 
@@ -404,7 +468,7 @@ class _AiVideoHomeState extends State<AiVideoHome> {
                 Icon(Icons.auto_awesome, color: Colors.white),
                 SizedBox(width: 12),
                 Text(
-                  'Create a Video',
+                  'Playground',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
               ],
@@ -414,10 +478,4 @@ class _AiVideoHomeState extends State<AiVideoHome> {
       ),
     );
   }
-}
-
-class _CardItem {
-  final String title;
-  final String image;
-  const _CardItem(this.title, this.image);
 }

@@ -1,17 +1,53 @@
+import 'dart:io';
+
 import 'package:ai_app/home_screen.dart';
 import 'package:ai_app/onboarding_screen.dart';
-import 'package:ai_app/prompt_screen.dart';
+import 'package:ai_app/services/notification_service.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get_core/src/get_main.dart';
+import 'package:get/get_instance/src/extension_instance.dart';
 import 'package:get/get_navigation/src/root/get_material_app.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:mixpanel_flutter/mixpanel_flutter.dart';
+import 'controllers/auth_controller.dart';
 import 'splash_screen.dart';
 
-void main() async {
+late Mixpanel mixpanel;
+
+Future<void> _backgroundMessageHandler(RemoteMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+}
+
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
   await GetStorage.init();
+
+  if (Platform.isAndroid) {
+
+    await Firebase.initializeApp();
+
+    FirebaseMessaging.onBackgroundMessage(_backgroundMessageHandler);
+
+    final notificationService = NotificationService();
+    notificationService.requestNotificationPermission();
+  }
+  Get.put(AuthController());
+
+  mixpanel = await Mixpanel.init(
+    "10d1d520a1393ce42700580e904c8e5e",
+    trackAutomaticEvents: true,
+  );
+
   runApp(const AiApp());
 }
+
+
 
 class AiApp extends StatelessWidget {
   const AiApp({super.key});
@@ -71,8 +107,6 @@ class AiApp extends StatelessWidget {
     switch (settings.name) {
       case "/onboarding":
         return OnboardingScreen();
-      case "/prompt":
-        return PromptScreen();
       case "/home":
         return AiVideoHome();
       default:

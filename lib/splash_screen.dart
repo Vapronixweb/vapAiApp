@@ -1,6 +1,12 @@
+import 'package:ai_app/utils/helper.dart' as DeviceService;
 import 'package:flutter/material.dart';
+import 'package:get/get_core/src/get_main.dart';
+import 'package:get/get_navigation/src/extension_navigation.dart';
 import 'dart:async';
 import 'dart:ui';
+
+import 'controllers/auth_controller.dart';
+import 'main.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -23,7 +29,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   @override
   void initState() {
     super.initState();
-
+    _bootstrap();
     // 1. Icon Pulse Animation
     _pulseController = AnimationController(
       vsync: this,
@@ -60,9 +66,47 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
       TweenSequenceItem(tween: Tween(begin: Alignment.topRight, end: Alignment.bottomRight), weight: 1),
     ]).animate(_bgController);
 
-    // Navigation
+  }
+
+
+  Future<void> _bootstrap() async {
+
+    mixpanel.track(
+      "Splash Screen Viewed",
+      properties: {
+        "timestamp": DateTime.now().toIso8601String(),
+      },
+    );
+
+    final auth = AuthController.to;
+
+    final deviceToken = await DeviceService.getDeviceToken();
+
+    await auth.deviceLogin(deviceToken);
+
     Future.delayed(const Duration(seconds: 4), () {
-      Navigator.pushReplacementNamed(context, "/onboarding");
+      if (auth.isLoggedIn.value) {
+
+        mixpanel.track(
+          "User Auto Logged In",
+          properties: {
+            "source": "device_login",
+          },
+        );
+
+        Get.offAllNamed("/home");
+      } else {
+
+        mixpanel.track(
+          "Onboarding Started",
+          properties: {
+            "source": "fresh_user",
+            "device_login": false,
+          },
+        );
+
+        Get.offAllNamed("/onboarding");
+      }
     });
   }
 
@@ -124,11 +168,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                 filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
-                  ),
+                  
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -152,11 +192,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                               ),
                             ],
                           ),
-                          child: const Icon(
-                            Icons.auto_awesome_motion, // Replace with your logo asset if needed
-                            size: 50,
-                            color: Colors.white,
-                          ),
+                          child: Image.asset('assets/app_icon_white.png', width: 60,),
                         ),
                       ),
 
@@ -181,7 +217,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                               ).createShader(bounds);
                             },
                             child: const Text(
-                              "VAPRONIX",
+                              "IMAGINE AI",
                               style: TextStyle(
                                 fontSize: 32,
                                 fontWeight: FontWeight.bold,
@@ -196,7 +232,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       const SizedBox(height: 8),
 
                       Text(
-                        "AI Video Generator",
+                        "Transform your images into creatives",
+                        textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.white.withOpacity(0.6),

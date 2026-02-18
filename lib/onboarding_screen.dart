@@ -21,7 +21,7 @@ class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
 
   @override
-  _OnboardingScreenState createState() => _OnboardingScreenState();
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> with SingleTickerProviderStateMixin {
@@ -38,25 +38,28 @@ class _OnboardingScreenState extends State<OnboardingScreen> with SingleTickerPr
       title: "Transform Text into Visuals",
       description: "Generate beautiful, high-quality images from simple text descriptions.",
       icon: Icons.auto_awesome,
-      color: const Color(0xFF6366F1),
+      color: const Color(0xFF10B981),
       gradient: [const Color(0xFF6366F1), const Color(0xFF8B5CF6)],
       lottieAsset: "assets/animations/text_to_image.json",
+      asset: 'assets/onboarding1.png'
     ),
     OnboardingPage(
       title: "Bring Images to Life",
       description: "Convert static images into dynamic videos with smooth animations.",
       icon: Icons.video_settings,
-      color: const Color(0xFFEC4899),
+      color: const Color(0xFF6366F1),
       gradient: [const Color(0xFFEC4899), const Color(0xFFF43F5E)],
       lottieAsset: "assets/animations/image_to_video.json",
+        asset: 'assets/onboarding2.png'
     ),
     OnboardingPage(
       title: "Create & Share",
       description: "Export in HD, customize styles, and share your AI-generated content.",
       icon: Icons.share,
-      color: const Color(0xFF10B981),
+      color: const Color(0xFFEC4899),
       gradient: [const Color(0xFF10B981), const Color(0xFF34D399)],
       lottieAsset: "assets/animations/share_creative.json",
+        asset: 'assets/onboarding3.png'
     ),
   ];
 
@@ -206,7 +209,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> with SingleTickerPr
                                   // Placeholder for Lottie (using Icon for now if asset missing)
                                   ScaleTransition(
                                     scale: _scaleAnimation,
-                                    child: Icon(page.icon, size: 100, color: Colors.white),
+                                    child: Image.asset(page.asset, width: 100,),
                                   ),
                                 ],
                               ),
@@ -350,6 +353,7 @@ class OnboardingPage {
   final Color color;
   final List<Color> gradient;
   final String lottieAsset;
+  final String asset;
 
   OnboardingPage({
     required this.title,
@@ -358,5 +362,6 @@ class OnboardingPage {
     required this.color,
     required this.gradient,
     required this.lottieAsset,
+    required this.asset
   });
 }
