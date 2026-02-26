@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:ai_app/pro_screen.dart';
@@ -12,17 +13,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 import 'controllers/auth_controller.dart';
 
 class TextToImageScreen extends StatefulWidget {
   final String? initialPrompt; // 1. Accepts text passed from Home Screen
 
-  const TextToImageScreen({
-    super.key,
-    this.initialPrompt
-  });
+  const TextToImageScreen({super.key, this.initialPrompt});
 
   @override
   State<TextToImageScreen> createState() => _TextToImageScreenState();
@@ -54,6 +51,20 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
     StyleOption("3D Render", Icons.view_in_ar_outlined),
   ];
 
+  final List<String> _aiMessages = [
+    "Analyzing your prompt...",
+    "Understanding composition...",
+    "Designing visual structure...",
+    "Applying artistic style...",
+    "Enhancing details...",
+    "Finalizing artwork...",
+  ];
+
+  String _currentMessage = "Analyzing your prompt...";
+  int _messageIndex = 0;
+  bool _showFinalGenerating = false;
+  Timer? _messageTimer;
+
   @override
   void initState() {
     super.initState();
@@ -71,6 +82,31 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
     super.dispose();
   }
 
+  void _startMessageRotation() {
+    _messageIndex = 0;
+    _showFinalGenerating = false;
+    _currentMessage = _aiMessages[0];
+
+    _messageTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (_messageIndex < _aiMessages.length - 1) {
+        _messageIndex++;
+        setState(() {
+          _currentMessage = _aiMessages[_messageIndex];
+        });
+      } else {
+        setState(() {
+          _showFinalGenerating = true;
+          _currentMessage = "Generating...";
+        });
+        timer.cancel(); // Stop changing messages
+      }
+    });
+  }
+
+  void _stopMessageRotation() {
+    _messageTimer?.cancel();
+    _messageTimer = null;
+  }
 
   void _scrollToResult() {
     Future.delayed(const Duration(milliseconds: 300), () {
@@ -82,17 +118,10 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
     });
   }
 
-
   Future<File?> _downloadImageFile() async {
     if (resultUrl == null) return null;
 
     try {
-      // Request permission
-      final status = await Permission.photos.request();
-      if (!status.isGranted) {
-        Get.snackbar("Permission", "Storage permission denied");
-        return null;
-      }
 
       // Download to temporary directory
       final tempDir = await getTemporaryDirectory();
@@ -102,8 +131,10 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       await Dio().download("$baseUrl/$resultUrl", filePath);
 
       // Save to gallery using gallery_saver_plus
-      final bool? isSaved =
-      await GallerySaver.saveImage(filePath, albumName: "AI App");
+      final bool? isSaved = await GallerySaver.saveImage(
+        filePath,
+        albumName: "AI App",
+      );
 
       if (isSaved != true) {
         Get.snackbar("Error", "Failed to save image");
@@ -116,7 +147,6 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       return null;
     }
   }
-
 
   Future<void> _handleDownload() async {
     final file = await _downloadImageFile();
@@ -140,7 +170,6 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
 
   @override
   Widget build(BuildContext context) {
-
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
@@ -170,13 +199,10 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
 
                     // 6. Style Selection
                     // _buildStyleSelection(),
-
                     const SizedBox(height: 20),
 
                     // 7. Result Section (If generated)
-                    if (resultUrl != null)
-                      _buildResultSection(),
-
+                    if (resultUrl != null) _buildResultSection(),
 
                     // Bottom padding for scrolling
                     const SizedBox(height: 100),
@@ -215,20 +241,32 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
           ),
           const Spacer(),
           GestureDetector(
-            onTap: (){
-              Navigator.push(context, MaterialPageRoute(builder: (context)=>ProAccessScreen()));
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => ProAccessScreen()),
+              );
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [Color(0xFF4facfe), Color(0xFF00f2fe)]),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF4facfe), Color(0xFF00f2fe)],
+                ),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Row(
                 children: [
                   Icon(Icons.auto_awesome, color: Colors.white, size: 14),
                   SizedBox(width: 4),
-                  Text("PRO", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
+                  Text(
+                    "PRO",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 10,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -282,16 +320,24 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
                       ),
                     ),
                   ),
-                  if (generationMode == GenerationMode.textToImage || generationMode == GenerationMode.textToVideo)
+                  if (generationMode == GenerationMode.textToImage ||
+                      generationMode == GenerationMode.textToVideo)
                     GestureDetector(
                       onTap: _randomizePrompt,
                       child: const Row(
                         children: [
-                          Icon(Icons.shuffle, color: Colors.blueAccent, size: 14),
+                          Icon(
+                            Icons.shuffle,
+                            color: Colors.blueAccent,
+                            size: 14,
+                          ),
                           SizedBox(width: 4),
                           Text(
                             "Surprise Me",
-                            style: TextStyle(color: Colors.blueAccent, fontSize: 12),
+                            style: TextStyle(
+                              color: Colors.blueAccent,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -315,7 +361,10 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
                     hintText: generationMode == GenerationMode.imageToImage
                         ? "E.g., Make it look like a cyberpunk city..."
                         : "E.g., An astronaut riding a horse on Mars, photorealistic, 4k...",
-                    hintStyle: const TextStyle(color: Colors.white30, fontSize: 14),
+                    hintStyle: const TextStyle(
+                      color: Colors.white30,
+                      fontSize: 14,
+                    ),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.zero,
                   ),
@@ -335,10 +384,17 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
-
-          _modeChip("Style your image", GenerationMode.imageToImage, Icons.image),
+          _modeChip(
+            "Style your image",
+            GenerationMode.imageToImage,
+            Icons.image,
+          ),
           const SizedBox(width: 10),
-          _modeChip("Generate an Image", GenerationMode.textToImage, Icons.text_fields),
+          _modeChip(
+            "Generate an Image",
+            GenerationMode.textToImage,
+            Icons.text_fields,
+          ),
 
           // const SizedBox(width: 10),
           // _modeChip("Text to video", GenerationMode.textToVideo, Icons.video_camera_back),
@@ -396,49 +452,55 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       ),
       child: selectedImage == null
           ? InkWell(
-        onTap: _pickImage,
-        borderRadius: BorderRadius.circular(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add_photo_alternate_outlined, color: Colors.blueAccent.withOpacity(0.5), size: 40),
-            const SizedBox(height: 10),
-            const Text("Upload Reference Image", style: TextStyle(color: Colors.white54)),
-          ],
-        ),
-      )
-          : Stack(
-        children: [
-          Center(
-            child: ClipRRect(
+              onTap: _pickImage,
               borderRadius: BorderRadius.circular(20),
-              child: Image.file(
-                selectedImage!,
-                fit: BoxFit.fill,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.add_photo_alternate_outlined,
+                    color: Colors.blueAccent.withOpacity(0.5),
+                    size: 40,
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "Upload Reference Image",
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                ],
               ),
-            ),
-          ),
-          Positioned(
-            top: 10,
-            right: 10,
-            child: GestureDetector(
-              onTap: () => setState(() => selectedImage = null),
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: const BoxDecoration(
-                  color: Colors.black54,
-                  shape: BoxShape.circle,
+            )
+          : Stack(
+              children: [
+                Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.file(selectedImage!, fit: BoxFit.fill),
+                  ),
                 ),
-                child: const Icon(Icons.close, color: Colors.white, size: 18),
-              ),
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: GestureDetector(
+                    onTap: () => setState(() => selectedImage = null),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
-
-
 
   Widget _buildStyleSelection() {
     return Column(
@@ -446,7 +508,14 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       children: [
         const Padding(
           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          child: Text("Choose Style", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          child: Text(
+            "Choose Style",
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
         ),
         SizedBox(
           height: 100,
@@ -470,46 +539,44 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
                         shape: BoxShape.circle,
                         gradient: isSelected
                             ? const LinearGradient(
-                          colors: [Color(0xFF4facfe), Color(0xFF00f2fe)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        )
+                                colors: [Color(0xFF4facfe), Color(0xFF00f2fe)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
                             : LinearGradient(
-                          colors: [
-                            const Color(0xFF2A2A35).withOpacity(0.8),
-                            const Color(0xFF1E1E24).withOpacity(0.8),
-                          ],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
+                                colors: [
+                                  const Color(0xFF2A2A35).withOpacity(0.8),
+                                  const Color(0xFF1E1E24).withOpacity(0.8),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
                         border: isSelected
                             ? Border.all(color: Colors.white, width: 2)
                             : Border.all(color: Colors.white24, width: 1),
                         boxShadow: isSelected
                             ? [
-                          BoxShadow(
-                            color: Colors.blueAccent.withOpacity(0.3),
-                            blurRadius: 8,
-                            spreadRadius: 1,
-                          )
-                        ]
+                                BoxShadow(
+                                  color: Colors.blueAccent.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  spreadRadius: 1,
+                                ),
+                              ]
                             : null,
                       ),
                       child: Center(
-                        child: Icon(
-                          style.icon,
-                          color: Colors.white,
-                          size: 28,
-                        ),
+                        child: Icon(style.icon, color: Colors.white, size: 28),
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       style.name,
                       style: TextStyle(
-                          color: isSelected ? Colors.white : Colors.white70,
-                          fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal
+                        color: isSelected ? Colors.white : Colors.white70,
+                        fontSize: 12,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.normal,
                       ),
                     ),
                   ],
@@ -581,8 +648,6 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
     );
   }
 
-
-
   Widget _premiumActionButton({
     required String label,
     required IconData icon,
@@ -622,7 +687,6 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       ),
     );
   }
-
 
   Widget _glassSecondaryButton({
     required String label,
@@ -673,29 +737,45 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       child: ElevatedButton(
         onPressed: canGenerate && !isLoading ? _handleGenerate : null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: canGenerate ? const Color(0xFF2D62FF) : Colors.grey[800],
+          backgroundColor: canGenerate
+              ? const Color(0xFF2D62FF)
+              : Colors.grey[800],
           foregroundColor: Colors.white,
           disabledBackgroundColor: Colors.grey[900],
           disabledForegroundColor: Colors.grey[600],
           padding: const EdgeInsets.symmetric(vertical: 18),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           elevation: canGenerate ? 8 : 0,
           shadowColor: const Color(0xFF2D62FF).withOpacity(0.5),
         ),
         child: isLoading
-            ? const SizedBox(
-            height: 24,
-            width: 24,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
-        )
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _currentMessage,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
+              )
             : const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.auto_awesome),
-            SizedBox(width: 10),
-            Text("Generate Artwork", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ],
-        ),
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.auto_awesome),
+                  SizedBox(width: 10),
+                  Text(
+                    "Generate Artwork",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -703,13 +783,66 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
   // ================= LOGIC METHODS =================
 
   Future<void> _pickImage() async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E24),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.white),
+                title: const Text(
+                  "Choose from Gallery",
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _selectImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Colors.white),
+                title: const Text(
+                  "Capture from Camera",
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _selectImage(ImageSource.camera);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _selectImage(ImageSource source) async {
     try {
-      final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
+      final XFile? image = await _imagePicker.pickImage(
+        source: source,
+        imageQuality: 85, // compress image slightly
+      );
+
       if (image != null) {
-        setState(() => selectedImage = File(image.path));
+        setState(() {
+          selectedImage = File(image.path);
+        });
       }
     } catch (e) {
       debugPrint("Error picking image: $e");
+
+      Get.snackbar(
+        "Error",
+        "Failed to pick image",
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
     }
   }
 
@@ -718,16 +851,18 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       "A futuristic city with flying cars, neon lights, cyberpunk style",
       "An oil painting of a cottage in the woods during autumn",
       "A cute robot playing chess with a cat, 3d render",
-      "Portrait of a warrior princess, golden armor, dramatic lighting"
+      "Portrait of a warrior princess, golden armor, dramatic lighting",
     ];
     setState(() {
-      promptController.text = prompts[DateTime.now().microsecond % prompts.length];
+      promptController.text =
+          prompts[DateTime.now().microsecond % prompts.length];
     });
   }
 
-
   Future<void> _handleGenerate() async {
     setState(() => isLoading = true);
+    _startMessageRotation();
+
     FocusScope.of(context).unfocus(); // hide keyboard
 
     try {
@@ -749,7 +884,8 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       request.fields['prompt'] = promptController.text;
 
       // Attach image if in Image→Image mode
-      if (generationMode == GenerationMode.imageToImage && selectedImage != null) {
+      if (generationMode == GenerationMode.imageToImage &&
+          selectedImage != null) {
         request.files.add(
           await http.MultipartFile.fromPath('image', selectedImage!.path),
         );
@@ -775,10 +911,12 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
         );
 
         _scrollToResult();
-
+        _stopMessageRotation();
+        AuthController.to.refreshUser();
       } else {
         setState(() => isLoading = false);
         final responseData = jsonDecode(response.body);
+        _stopMessageRotation();
 
         Get.snackbar(
           "Error",
@@ -789,10 +927,16 @@ class _TextToImageScreenState extends State<TextToImageScreen> {
       }
     } catch (e) {
       setState(() => isLoading = false);
-      Get.snackbar("Error", "$e", backgroundColor: Colors.red, colorText: Colors.white);
+      _stopMessageRotation();
+
+      Get.snackbar(
+        "Failed",
+        "Generation Failed. Please try after sometime",
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
     }
   }
-
 }
 
 // Style Option Model
@@ -804,8 +948,4 @@ class StyleOption {
 }
 
 // Ensure this Enum is available globally or within this file
-enum GenerationMode {
-  textToImage,
-  imageToImage,
-  textToVideo,
-}
+enum GenerationMode { textToImage, imageToImage, textToVideo }

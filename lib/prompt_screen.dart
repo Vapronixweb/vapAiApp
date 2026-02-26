@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:ai_app/routes/app_routes.dart';
@@ -13,7 +14,6 @@ import 'models/prompt_template_model.dart';
 import 'package:http/http.dart' as http;
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class PromptScreen extends StatefulWidget {
   final Category category;
@@ -33,17 +33,88 @@ class _PromptScreenState extends State<PromptScreen> {
   File? selectedImage;
   final ImagePicker _picker = ImagePicker();
 
+  final List<String> _aiMessages = [
+    "Analyzing image...",
+    "Understanding features...",
+    "Defining facial structure...",
+    "Applying AI magic...",
+    "Enhancing details...",
+    "Generating masterpiece...",
+  ];
+
+  String _currentMessage = "Analyzing image...";
+  Timer? _messageTimer;
+
+  int _messageIndex = 0;
+  bool _showFinalGenerating = false;
+
+
   bool isLoading = false;
   String? resultImageUrl;
 
   Future<void> _pickImage() async {
-    final XFile? image =
-    await _picker.pickImage(source: ImageSource.gallery);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xff141414),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Wrap(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.photo_library, color: Colors.white),
+                  title: const Text(
+                    "Choose from Gallery",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _selectImage(ImageSource.gallery);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.camera_alt, color: Colors.white),
+                  title: const Text(
+                    "Capture from Camera",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _selectImage(ImageSource.camera);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
-    if (image != null) {
-      setState(() {
-        selectedImage = File(image.path);
-      });
+  Future<void> _selectImage(ImageSource source) async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        imageQuality: 85, // slight compression for performance
+      );
+
+      if (image != null) {
+        setState(() {
+          selectedImage = File(image.path);
+          resultImageUrl = null; // reset previous result if any
+        });
+      }
+    } catch (e) {
+      Get.snackbar(
+        "Error",
+        "Failed to pick image",
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
     }
   }
 
@@ -57,7 +128,7 @@ class _PromptScreenState extends State<PromptScreen> {
 
   Future<void> _handleGenerate() async {
     setState(() => isLoading = true);
-
+    _startMessageRotation();
     try {
       final auth = AuthController.to;
       final token = auth.accessToken.value;
@@ -93,6 +164,7 @@ class _PromptScreenState extends State<PromptScreen> {
         });
 
         AuthController.to.refreshUser();
+        _stopMessageRotation();
 
       } else {
         setState(() => isLoading = false);
@@ -104,6 +176,7 @@ class _PromptScreenState extends State<PromptScreen> {
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
+        _stopMessageRotation();
       }
     } catch (e) {
       setState(() => isLoading = false);
@@ -113,6 +186,7 @@ class _PromptScreenState extends State<PromptScreen> {
         backgroundColor: Colors.red,
         colorText: Colors.white,
       );
+      _stopMessageRotation();
     }
   }
 
@@ -120,9 +194,6 @@ class _PromptScreenState extends State<PromptScreen> {
     if (resultImageUrl == null) return null;
 
     try {
-      // Request permissions (important for Android)
-      await Permission.photos.request();
-      await Permission.storage.request();
 
       // Download image
       final tempDir = await getTemporaryDirectory();
@@ -163,7 +234,32 @@ class _PromptScreenState extends State<PromptScreen> {
     }
   }
 
+  void _startMessageRotation() {
+    _messageIndex = 0;
+    _showFinalGenerating = false;
+    _currentMessage = _aiMessages[0];
 
+    _messageTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (_messageIndex < _aiMessages.length - 1) {
+        _messageIndex++;
+        setState(() {
+          _currentMessage = _aiMessages[_messageIndex];
+        });
+      } else {
+        setState(() {
+          _showFinalGenerating = true;
+          _currentMessage = "Generating...";
+        });
+
+        timer.cancel();
+      }
+    });
+  }
+
+  void _stopMessageRotation() {
+    _messageTimer?.cancel();
+    _messageTimer = null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -192,7 +288,7 @@ class _PromptScreenState extends State<PromptScreen> {
                       : selectedImage != null
                       ? Image.file(
                     selectedImage!,
-                    fit: BoxFit.fill,
+                    fit: BoxFit.contain,
                     width: double.infinity,
                   )
                       : Image.network(
@@ -203,12 +299,31 @@ class _PromptScreenState extends State<PromptScreen> {
                   ),
                 ),
 
-                // LOADING OVERLAY
                 if (isLoading)
                   Container(
-                    color: Colors.black54,
-                    child: const Center(
-                      child: CircularProgressIndicator(color: Colors.white),
+                    color: Colors.black87,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(
+                            color: Colors.white,
+                          ),
+                          const SizedBox(height: 20),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 400),
+                            child: Text(
+                              _currentMessage,
+                              key: ValueKey(_currentMessage),
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
               ],
@@ -377,10 +492,7 @@ class _PromptScreenState extends State<PromptScreen> {
                           ),
                           alignment: Alignment.center,
                           child: isLoading
-                              ? const CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          )
+                              ? const Text("Generating...")
                               : const Text(
                             "Create",
                             style: TextStyle(

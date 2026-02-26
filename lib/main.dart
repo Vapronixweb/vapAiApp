@@ -55,10 +55,9 @@ class AiApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GetMaterialApp(
-      title: "ThinQon Echo",
+      title: "Imagine AI",
       debugShowCheckedModeBanner: false,
 
-      /// 👉 Global Theme
       theme: ThemeData(
         brightness: Brightness.light,
         scaffoldBackgroundColor: const Color(0xffFDF7F2),

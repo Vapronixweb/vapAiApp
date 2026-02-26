@@ -56,6 +56,8 @@ class _ProAccessScreenState extends State<ProAccessScreen> {
         "platform": "android"
       }),
     );
+
+    AuthController.to.refreshUser();
   }
 
 
